@@ -16,7 +16,6 @@ POINT_LAYER_ID = "schools"
 
 @st.cache_data
 def load_schools(path: str, modified_at: float) -> pd.DataFrame:
-    """Read the notebook export; modified_at refreshes the cache after an export."""
     schools = pd.read_csv(path, dtype={"agency_code": "string", "nces_ncessch": "string"})
     required = {
         "agency_code", "Name", "County", COMPOSITE_SCORE, PERCENTILE,
@@ -109,7 +108,6 @@ def make_deck(schools: pd.DataFrame) -> pdk.Deck:
         get_line_color=[255, 255, 255, 220], line_width_min_pixels=1,
     )
     return pdk.Deck(
-        # Streamlit uses None to choose a basemap matching the active theme.
         layers=[layer], map_style=pdk.map_styles.DARK,
         initial_view_state=pdk.ViewState(latitude=35.55, longitude=-79.75, zoom=6.3),
         tooltip={  # pyright: ignore[reportArgumentType]
@@ -125,9 +123,10 @@ def make_deck(schools: pd.DataFrame) -> pdk.Deck:
     )
 
 
+# this function was written by chatgpt
 def main() -> None:
     st.set_page_config(page_title="NC school outcomes map", layout="wide")
-    st.title("NC high schools: barriers and outcomes")
+    st.title("NC high schools")
     st.caption(
         "2026 ODIS community barriers + 2024–25 NC DPI outcomes; "
         "2024–25 NCES school locations. Matched non-charter schools only."
