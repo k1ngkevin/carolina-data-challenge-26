@@ -22,6 +22,7 @@ def load_schools(path: str, modified_at: float) -> pd.DataFrame:
         "agency_code", "Name", "County", COMPOSITE_SCORE, PERCENTILE,
         "graduation_pct", "graduation_display", "growth_status",
         "english_ii_pct", "english_ii_display", "math_1_pct", "math_1_display",
+        "act_unc_pct", "act_unc_display",
         "latitude", "longitude", "meets_academic_criteria",
     }
     missing = required.difference(schools.columns)
@@ -29,7 +30,7 @@ def load_schools(path: str, modified_at: float) -> pd.DataFrame:
         raise ValueError(f"map_data.csv is missing columns: {', '.join(sorted(missing))}")
 
     numeric = [COMPOSITE_SCORE, PERCENTILE, "graduation_pct", "english_ii_pct",
-               "math_1_pct", "latitude", "longitude"]
+               "math_1_pct", "act_unc_pct", "latitude", "longitude"]
     for column in numeric:
         schools[column] = pd.to_numeric(schools[column], errors="coerce")
     schools["meets_academic_criteria"] = (
@@ -57,11 +58,13 @@ def filter_schools(
     growth_choices: list[str],
     counties: list[str],
     shortlist_only: bool,
+    act_min: int = 0,
 ) -> pd.DataFrame:
     mask = schools[barrier_column].between(*barrier_range).fillna(False)
     mask &= meets_minimum(schools, "graduation", graduation_min)
     mask &= meets_minimum(schools, "english_ii", english_min)
     mask &= meets_minimum(schools, "math_1", math_min)
+    mask &= meets_minimum(schools, "act_unc", act_min)
     mask &= schools["growth_status"].isin(growth_choices)
     if counties:
         mask &= schools["County"].isin(counties)
@@ -87,6 +90,7 @@ def make_deck(schools: pd.DataFrame) -> pdk.Deck:
         "graduation": schools["graduation_display"].map(display_rate),
         "english_ii": schools["english_ii_display"].map(display_rate),
         "math_1": schools["math_1_display"].map(display_rate),
+        "act_unc": schools["act_unc_display"].map(display_rate),
     })
     points["color"] = [
         [17, 138, 112, 220] if shortlisted else
@@ -113,7 +117,8 @@ def make_deck(schools: pd.DataFrame) -> pdk.Deck:
                 "<b>{school}</b><br/>{county}<br/>"
                 "ODIS composite: {barrier_score} (national percentile {barrier_percentile})<br/>"
                 "Graduation: {graduation}<br/>Growth: {growth}<br/>"
-                "English II: {english_ii}<br/>Math 1: {math_1}"
+                "English II: {english_ii}<br/>Math 1: {math_1}<br/>"
+                "ACT meeting UNC minimum composite: {act_unc}"
             ),
             "style": {"backgroundColor": "#243446", "color": "white"},
         },
@@ -161,6 +166,11 @@ def main() -> None:
     graduation_min = st.sidebar.slider("Minimum graduation rate (%)", 0, 95, 0)
     english_min = st.sidebar.slider("Minimum English II proficiency (%)", 0, 95, 0)
     math_min = st.sidebar.slider("Minimum Math 1 proficiency (%)", 0, 95, 0)
+    act_min = st.sidebar.slider(
+        "Minimum ACT meeting UNC composite benchmark (%)", 0, 95, 0,
+        help="Percentage of tested students meeting the UNC minimum ACT composite score; "
+             "this is not an average ACT score.",
+    )
     growth_choices = st.sidebar.multiselect(
         "Growth status", GROWTH_OPTIONS, default=GROWTH_OPTIONS,
     )
@@ -176,7 +186,7 @@ def main() -> None:
 
     filtered = filter_schools(
         schools, barrier_column, barrier_range, graduation_min, english_min,
-        math_min, growth_choices, counties, shortlist_only,
+        math_min, growth_choices, counties, shortlist_only, act_min=act_min,
     )
     count_col, shortlist_col, counties_col = st.columns(3)
     count_col.metric("Schools shown", f"{len(filtered)} / {len(schools)}")
@@ -202,27 +212,30 @@ def main() -> None:
         if not selected.empty:
             school = selected.iloc[0]
             st.subheader(f"{school['Name']} · {school['County']}")
-            first, second, third, fourth = st.columns(4)
+            first, second, third, fourth, fifth = st.columns(5)
             first.metric("Graduation", display_rate(school["graduation_display"]))
             second.metric("Growth", school["growth_status"])
             third.metric("English II", display_rate(school["english_ii_display"]))
             fourth.metric("Math 1", display_rate(school["math_1_display"]))
+            fifth.metric("ACT: UNC composite", display_rate(school["act_unc_display"]))
             st.caption(
                 f"ODIS composite {school[COMPOSITE_SCORE]:g}; "
                 f"national percentile {school[PERCENTILE]:g}. "
-                "Rates are NC DPI proficiency or graduation percentages, not ACT scores."
+                "English II and Math 1 are proficiency rates. ACT shows the percentage "
+                "meeting the UNC minimum composite, not an average ACT score."
             )
 
     with st.expander("View and download the filtered schools"):
         table = filtered[[
             "Name", "County", COMPOSITE_SCORE, PERCENTILE,
             "graduation_display", "growth_status", "english_ii_display",
-            "math_1_display", "meets_academic_criteria",
+            "math_1_display", "act_unc_display", "meets_academic_criteria",
         ]].rename(columns={
             "Name": "School", COMPOSITE_SCORE: "ODIS composite",
             PERCENTILE: "National percentile", "graduation_display": "Graduation",
             "growth_status": "Growth", "english_ii_display": "English II",
-            "math_1_display": "Math 1", "meets_academic_criteria": "Academic shortlist",
+            "math_1_display": "Math 1", "act_unc_display": "ACT: UNC composite",
+            "meets_academic_criteria": "Academic shortlist",
         })
         st.dataframe(table, hide_index=True, width="stretch")
         st.download_button(
