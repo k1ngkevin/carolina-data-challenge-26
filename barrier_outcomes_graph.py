@@ -15,6 +15,7 @@ OUTCOMES = [
     ("graduation", "Four-year graduation"),
     ("english_ii", "English II proficiency"),
     ("math_1", "NC Math 1 proficiency"),
+    ("act_unc", "ACT met UNC minimum composite"),
 ]
 GROUPS = [
     ("Other matched schools", False, "#315C79"),
@@ -73,7 +74,7 @@ def make_comparison_chart(
 ) -> tuple[pd.DataFrame, plt.Figure]:
     """Save a chart and its underlying medians; return both for the notebook."""
     summary = summarize_outcomes(data)
-    fig, ax = plt.subplots(figsize=(12.8, 6.4))
+    fig, ax = plt.subplots(figsize=(13.6, 7.3))
     fig.patch.set_facecolor("white")
     ax.set_facecolor("white")
     y_positions = np.arange(len(OUTCOMES))
@@ -85,7 +86,7 @@ def make_comparison_chart(
         y = y_positions + (-0.17 if group_index == 0 else 0.17)
         values = group_rows["median_lower"].to_numpy(dtype=float)
         bars = ax.barh(y, values, height=0.29, color=color, label=group_name, zorder=3)
-        for bar, value, count in zip(bars, values, group_rows["schools_reporting"]):
+        for bar, value in zip(bars, values):
             ax.text(
                 value - 1.2, bar.get_y() + bar.get_height() / 2,
                 f"{_rate_label(value)}%",
@@ -119,11 +120,17 @@ def make_comparison_chart(
     fig.text(0.04, 0.89,
              "Matched non-charter NC schools · NC DPI 2024–25 · High barrier: ODIS percentile ≥80",
              fontsize=11, color="#4D6573")
-    fig.text(0.04, 0.055,
+    act_rows = summary.loc[summary["outcome"].eq(OUTCOMES[-1][1])].set_index("group")
+    act_high = act_rows.loc[GROUPS[1][0]]
+    act_other = act_rows.loc[GROUPS[0][0]]
+    fig.text(0.04, 0.045,
              "Gap = high-barrier minus other matched schools, in percentage points. Each school has equal weight.\n"
-             "Masked >95% and <5% results enter as bounds; all six medians are exact. Provisional ODIS–DPI matches.",
-             fontsize=9.5, color="#4D6573", linespacing=1.5)
-    fig.subplots_adjust(left=0.25, right=0.96, top=0.75, bottom=0.24)
+             "ACT = share of tested students meeting UNC's minimum ACT composite, not an average ACT score. "
+             f"ACT reported: {int(act_high['schools_reporting'])}/{int(act_high['schools_in_group'])} high-barrier; "
+             f"{int(act_other['schools_reporting'])}/{int(act_other['schools_in_group'])} other.\n"
+             "Masked >95% and <5% results enter as bounds; all eight medians are exact. Provisional ODIS–DPI matches.",
+             fontsize=9.5, color="#4D6573", linespacing=1.45)
+    fig.subplots_adjust(left=0.29, right=0.96, top=0.77, bottom=0.23)
 
     output_dir.mkdir(exist_ok=True)
     summary.to_csv(output_dir / "barrier_outcomes_comparison.csv", index=False)
